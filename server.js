@@ -320,8 +320,10 @@ async function download_video(url, filename) {
       } (FFmpeg: ${hasFFmpeg ? "yes" : "no"})`
     );
 
+    let trimmed_url = url.trim();
+
     // Use downloadAsync - let ytdlp add extension
-    await ytdlp.downloadAsync(url, {
+    await ytdlp.downloadAsync(trimmed_url, {
       format: formatOptions,
       output: path.join(TEMP_DIR, baseFilename),
       onProgress: (progress) => {
@@ -628,7 +630,7 @@ client.on("message_create", async (msg) => {
     let videoSentSuccessfully = false;
 
     try {
-      const url = only_search[0];
+      const url = only_search[0].trim();
 
       // Validate URL
       if (!url || (!url.includes("youtube.com") && !url.includes("youtu.be"))) {

@@ -24,9 +24,13 @@ RUN apt-get update && apt-get install -y \
     xdg-utils \
     ffmpeg \
     python3 \
+    python3-pip \
     dumb-init \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp globally via pip (more up-to-date than apt)
+RUN pip3 install --break-system-packages yt-dlp
 
 # Install Google Chrome (amd64) or Chromium (arm64)
 RUN ARCH=$(dpkg --print-architecture) && \
@@ -58,10 +62,11 @@ COPY . .
 # Create directories for data (including .wwebjs_auth for RemoteAuth)
 RUN mkdir -p /app/temp /app/whatsapp-session /app/.wwebjs_auth
 
-# Set environment variables for Puppeteer and disable crash reporting
+# Set environment variables for Puppeteer and yt-dlp
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 ENV CHROME_CRASHPAD_HANDLER_DISABLED=1
+ENV PATH="/usr/local/bin:$PATH"
 
 # Use dumb-init to handle signals properly
 ENTRYPOINT ["dumb-init", "--"]
