@@ -1,0 +1,11 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+README.md
+.env
+whatsapp-session
+temp
+*.log
+.DS_Store
+.vscode

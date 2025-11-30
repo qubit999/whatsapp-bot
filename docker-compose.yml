@@ -1,0 +1,31 @@
+services:
+  whatsapp-bot:
+    build: .
+    container_name: whatsapp-bot
+    restart: unless-stopped
+    volumes:
+      # Mount source code for live updates (no rebuild needed)
+      - ./server.js:/app/server.js:ro
+      - ./package.json:/app/package.json:ro
+      # Persist RemoteAuth session data
+      - ./.wwebjs_auth:/app/.wwebjs_auth
+      # Persist downloaded videos cache
+      - ./temp:/app/temp
+    environment:
+      - NODE_ENV=production
+    env_file:
+      - ./.env
+    # Required for Chrome in Docker
+    shm_size: '1gb'
+    # Security settings for Chrome
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    # Use host network for easier QR code scanning (optional)
+    # network_mode: host
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

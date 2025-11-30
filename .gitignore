@@ -1,0 +1,10 @@
+node_modules
+npm-debug.log
+.git
+.env
+whatsapp-session
+temp
+*.log
+.DS_Store
+.vscode
+.wwebjs_auth
