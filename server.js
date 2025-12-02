@@ -14,9 +14,13 @@ const DB_API_BASE = "https://v6.db.transport.rest";
 // TLE API for satellite tracking
 const TLE_API_BASE = "https://tle.ivanstanojevic.me/api";
 
+// AviationStack API for flight data
+const AVIATIONSTACK_API_KEY = process.env.AVIATIONSTACK_API_KEY;
+const AVIATIONSTACK_API_BASE = "https://api.aviationstack.com/v1";
+
 // Maximum file size to send directly via WhatsApp
 // Files larger than this will be uploaded to Gofile and sent as a link
-const MAX_SEND_SIZE_MB = 40;
+const MAX_SEND_SIZE_MB = 1;
 
 // Upload file to Gofile.io and return download link
 async function uploadToGofile(filePath, filename) {
@@ -1438,6 +1442,205 @@ client.on("message_create", async (msg) => {
     }
   }
 
+  // Flight details from AviationStack
+  if (command == "!flight") {
+    try {
+      if (!AVIATIONSTACK_API_KEY) {
+        await chat.sendMessage("❌ AviationStack API key not configured.");
+        return;
+      }
+
+      const flightCode = only_search.join("").trim().toUpperCase();
+      
+      if (!flightCode) {
+        await chat.sendMessage(
+          "❌ Usage: !flight <flight_code>\n\n" +
+          "Examples:\n" +
+          "  !flight LH123\n" +
+          "  !flight UA456\n" +
+          "  !flight BA789"
+        );
+        return;
+      }
+
+      // Extract airline code and flight number
+      const match = flightCode.match(/^([A-Z]{2})(\d+)$/);
+      if (!match) {
+        await chat.sendMessage(
+          `❌ Invalid flight code: ${flightCode}\n\n` +
+          "Format: 2 letters + numbers (e.g., LH123, UA456)"
+        );
+        return;
+      }
+
+      await chat.sendMessage(`✈️ Searching for flight ${flightCode}...`);
+
+      // Search for the flight
+      const url = `${AVIATIONSTACK_API_BASE}/flights?access_key=${AVIATIONSTACK_API_KEY}&flight_iata=${flightCode}&limit=1`;
+      console.log(`Fetching flight: ${url.replace(AVIATIONSTACK_API_KEY, "XXX")}`);
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.message || data.error.code || "API error");
+      }
+
+      if (!data.data || data.data.length === 0) {
+        await chat.sendMessage(
+          `❌ Flight ${flightCode} not found.\n\n` +
+          "💡 Tips:\n" +
+          "• Check if the flight code is correct\n" +
+          "• Flight may not be scheduled today\n" +
+          "• Try with full code (e.g., LH123)"
+        );
+        return;
+      }
+
+      const flight = data.data[0];
+      const dep = flight.departure || {};
+      const arr = flight.arrival || {};
+      const airline = flight.airline || {};
+      const flightInfo = flight.flight || {};
+      const aircraft = flight.aircraft || {};
+      const live = flight.live || null;
+
+      // Format times with timezone
+      const formatTime = (timeStr, timezone) => {
+        if (!timeStr) return "—";
+        if (timezone) {
+          try {
+            const time = new Date(timeStr).toLocaleTimeString("de-DE", { 
+              hour: "2-digit", 
+              minute: "2-digit",
+              timeZone: timezone 
+            });
+            // Get timezone abbreviation
+            const tzAbbr = new Date(timeStr).toLocaleTimeString("en-US", {
+              timeZone: timezone,
+              timeZoneName: "short"
+            }).split(" ").pop();
+            return `${time} (${tzAbbr})`;
+          } catch (e) {
+            return timeStr.substring(11, 16);
+          }
+        }
+        return timeStr.substring(11, 16);
+      };
+
+      const formatDate = (timeStr) => {
+        if (!timeStr) return "—";
+        return new Date(timeStr).toLocaleDateString("de-DE", {
+          weekday: "short",
+          day: "2-digit",
+          month: "2-digit",
+          year: "numeric"
+        });
+      };
+
+      // Calculate flight duration
+      let flightDuration = "—";
+      if (dep.scheduled && arr.scheduled) {
+        const depTime = new Date(dep.scheduled);
+        const arrTime = new Date(arr.scheduled);
+        const durationMs = arrTime - depTime;
+        const hours = Math.floor(durationMs / (1000 * 60 * 60));
+        const minutes = Math.floor((durationMs % (1000 * 60 * 60)) / (1000 * 60));
+        flightDuration = `${hours}h ${minutes}min`;
+      }
+
+      // Status emoji and text
+      const status = flight.flight_status || "unknown";
+      const statusInfo = {
+        "scheduled": { emoji: "⚪", text: "Scheduled" },
+        "active": { emoji: "🔵", text: "In Flight" },
+        "landed": { emoji: "🟢", text: "Landed" },
+        "cancelled": { emoji: "🔴", text: "Cancelled" },
+        "incident": { emoji: "🔴", text: "Incident" },
+        "diverted": { emoji: "🟠", text: "Diverted" },
+        "delayed": { emoji: "🟡", text: "Delayed" }
+      };
+      const statusDisplay = statusInfo[status] || { emoji: "⚪", text: status };
+
+      // Build result message
+      let result = `✈️ *Flight ${flightInfo.iata || flightCode}*\n`;
+      result += `━━━━━━━━━━━━━━━━━━\n\n`;
+
+      // Airline info
+      result += `🏢 *Airline:* ${airline.name || "—"}\n`;
+      if (flightInfo.codeshared) {
+        result += `🔗 *Codeshare:* ${flightInfo.codeshared.airline_name} ${flightInfo.codeshared.flight_iata}\n`;
+      }
+      result += `\n`;
+
+      // Status
+      result += `${statusDisplay.emoji} *Status:* ${statusDisplay.text}\n`;
+      if (dep.delay && dep.delay > 0) {
+        result += `⚠️ *Delay:* +${dep.delay} min\n`;
+      }
+      result += `\n`;
+
+      // Departure info
+      result += `🛫 *DEPARTURE*\n`;
+      result += `   📍 ${dep.airport || "—"} (${dep.iata || "—"})\n`;
+      result += `   📅 ${formatDate(dep.scheduled)}\n`;
+      result += `   🕐 Scheduled: ${formatTime(dep.scheduled, dep.timezone)}\n`;
+      if (dep.estimated && dep.estimated !== dep.scheduled) {
+        result += `   🕐 Estimated: ${formatTime(dep.estimated, dep.timezone)}\n`;
+      }
+      if (dep.actual) {
+        result += `   🕐 Actual: ${formatTime(dep.actual, dep.timezone)}\n`;
+      }
+      if (dep.terminal) result += `   🏛️ Terminal: ${dep.terminal}\n`;
+      if (dep.gate) result += `   🚪 Gate: ${dep.gate}\n`;
+      result += `\n`;
+
+      // Arrival info
+      result += `🛬 *ARRIVAL*\n`;
+      result += `   📍 ${arr.airport || "—"} (${arr.iata || "—"})\n`;
+      result += `   📅 ${formatDate(arr.scheduled)}\n`;
+      result += `   🕐 Scheduled: ${formatTime(arr.scheduled, arr.timezone)}\n`;
+      if (arr.estimated && arr.estimated !== arr.scheduled) {
+        result += `   🕐 Estimated: ${formatTime(arr.estimated, arr.timezone)}\n`;
+      }
+      if (arr.actual) {
+        result += `   🕐 Actual: ${formatTime(arr.actual, arr.timezone)}\n`;
+      }
+      if (arr.terminal) result += `   🏛️ Terminal: ${arr.terminal}\n`;
+      if (arr.gate) result += `   🚪 Gate: ${arr.gate}\n`;
+      if (arr.baggage) result += `   🧳 Baggage: ${arr.baggage}\n`;
+      result += `\n`;
+
+      // Flight info
+      result += `⏱️ *FLIGHT INFO*\n`;
+      result += `   ⏳ Duration: ${flightDuration}\n`;
+      if (aircraft.registration) result += `   ✈️ Aircraft: ${aircraft.registration}\n`;
+      if (aircraft.iata) result += `   🛩️ Type: ${aircraft.iata}\n`;
+      if (flightInfo.icao) result += `   📟 ICAO: ${flightInfo.icao}\n`;
+
+      // Live tracking info if available
+      if (live) {
+        result += `\n`;
+        result += `📡 *LIVE TRACKING*\n`;
+        if (live.altitude) result += `   📏 Altitude: ${Math.round(live.altitude * 3.281)} ft\n`;
+        if (live.speed_horizontal) result += `   💨 Speed: ${Math.round(live.speed_horizontal * 1.852)} km/h\n`;
+        if (live.latitude && live.longitude) {
+          result += `   🌍 Position: ${live.latitude.toFixed(4)}, ${live.longitude.toFixed(4)}\n`;
+        }
+        if (live.is_ground) result += `   🛞 On Ground: Yes\n`;
+      }
+
+      await chat.sendMessage(result);
+
+    } catch (error) {
+      console.error("Error fetching flight details:", error);
+      await chat.sendMessage(
+        `❌ Error: ${error.message}\n\n` +
+        "💡 This might be due to API limits or invalid flight code."
+      );
+    }
+  }
+
   if (command == "!help" || command == "!commands") {
     const helpText = `📋 *Available Commands*
 
@@ -1461,6 +1664,9 @@ client.on("message_create", async (msg) => {
 
 *Satellites*
 !satsearch "<name>" - Search satellites by name
+
+*Flights*
+!flight <code> - Detailed flight info (e.g., LH123)
 
 *Other*
 !llm <question> - Ask AI a question
