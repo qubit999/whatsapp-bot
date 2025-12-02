@@ -3,6 +3,7 @@ FROM node:20-slim
 # Install dependencies for Puppeteer/Chrome, FFmpeg, and Python3 (for yt-dlp)
 RUN apt-get update && apt-get install -y \
     wget \
+    curl \
     gnupg \
     ca-certificates \
     fonts-liberation \
@@ -32,19 +33,23 @@ RUN apt-get update && apt-get install -y \
 # Install yt-dlp globally via pip (more up-to-date than apt)
 RUN pip3 install --break-system-packages yt-dlp
 
+# Configure yt-dlp to use android player client (more reliable, avoids SABR streaming issues)
+RUN mkdir -p /root/.config/yt-dlp && \
+    echo '--extractor-args "youtube:player_client=android"' > /root/.config/yt-dlp/config
+
 # Install Google Chrome (amd64) or Chromium (arm64)
 RUN ARCH=$(dpkg --print-architecture) && \
     if [ "$ARCH" = "amd64" ]; then \
-        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg && \
-        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
-        apt-get update && \
-        apt-get install -y google-chrome-stable --no-install-recommends && \
-        rm -rf /var/lib/apt/lists/*; \
+    wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/*; \
     else \
-        apt-get update && \
-        apt-get install -y chromium --no-install-recommends && \
-        rm -rf /var/lib/apt/lists/* && \
-        ln -sf /usr/bin/chromium /usr/bin/google-chrome-stable; \
+    apt-get update && \
+    apt-get install -y chromium --no-install-recommends && \
+    rm -rf /var/lib/apt/lists/* && \
+    ln -sf /usr/bin/chromium /usr/bin/google-chrome-stable; \
     fi
 
 # Create app directory

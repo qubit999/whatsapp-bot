@@ -15,8 +15,15 @@ services:
       - NODE_ENV=production
     env_file:
       - ./.env
-    # Required for Chrome in Docker
-    shm_size: '1gb'
+    # Required for Chrome in Docker - increased for large file handling
+    shm_size: "4G"
+    # Memory limits for Windows Docker Desktop stability with large files
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 2G
     # Security settings for Chrome
     cap_add:
       - SYS_ADMIN

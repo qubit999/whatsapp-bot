@@ -13,6 +13,7 @@
     "@perplexity-ai/perplexity_ai": "^0.16.0",
     "ffmpeg": "^0.0.4",
     "qrcode-terminal": "^0.12.0",
+    "satellite.js": "^5.0.0",
     "whatsapp-web.js": "^1.34.2",
     "youtube-search-api": "^2.0.1",
     "ytdlp-nodejs": "^2.3.5"
